@@ -112,7 +112,6 @@ const XRayViewer: React.FC<XRayViewerProps> = ({
                 transition: "all 0.3s ease",
               }}
             />
-            {/* Plain div overlay — bypasses MUI sx so % values reach CSS directly */}
             <div
               style={{
                 position: "absolute",
@@ -130,7 +129,6 @@ const XRayViewer: React.FC<XRayViewerProps> = ({
                 const { x, y, width, height } = finding.boundingBox;
                 const isSelected = finding.id === selectedFindingId;
 
-                // Convert 0-1000 coords to percentages so boxes scale with the image
                 const toPercent = (v: number) => `${(v / 1000) * 100}%`;
 
                 return (
@@ -169,7 +167,6 @@ const XRayViewer: React.FC<XRayViewerProps> = ({
                         : "#d84315";
                     }}
                   >
-                    {/* Finding ID label */}
                     <div
                       style={{
                         position: "absolute",
