@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useRef } from "react";
 import {
   Box,
   IconButton,
@@ -19,6 +19,7 @@ interface XRayViewerProps {
   imageUrl: string;
   findings: Finding[];
   selectedFindingId: string | null;
+  hiddenFindingIds: Set<string>;
   onFindingClick: (id: string) => void;
   onImageUpload: (file: File) => void;
   isAnalyzing: boolean;
@@ -28,58 +29,20 @@ const XRayViewer: React.FC<XRayViewerProps> = ({
   imageUrl,
   findings,
   selectedFindingId,
+  hiddenFindingIds,
   onFindingClick,
   onImageUpload,
   isAnalyzing,
 }) => {
   const theme = useTheme();
   const isSmall = useMediaQuery(theme.breakpoints.down("sm"));
-
-  const imageRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [imageDimensions, setImageDimensions] = useState({
-    width: 0,
-    height: 0,
-  });
-
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (imageRef.current) {
-        const dims = {
-          width: imageRef.current.offsetWidth,
-          height: imageRef.current.offsetHeight,
-        };
-        console.log("=== IMAGE DIMENSIONS ===");
-        console.log("Rendered size:", dims);
-        setImageDimensions(dims);
-      }
-    };
-
-    const img = imageRef.current;
-    if (img) {
-      img.addEventListener("load", updateDimensions);
-      updateDimensions();
-    }
-
-    window.addEventListener("resize", updateDimensions);
-
-    return () => {
-      if (img) {
-        img.removeEventListener("load", updateDimensions);
-      }
-      window.removeEventListener("resize", updateDimensions);
-    };
-  }, [imageUrl]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       onImageUpload(file);
     }
-  };
-
-  const scaleCoordinate = (value: number, dimension: number): number => {
-    return (value / 1000) * dimension;
   };
 
   return (
@@ -130,102 +93,103 @@ const XRayViewer: React.FC<XRayViewerProps> = ({
       {imageUrl && !isAnalyzing && (
         <>
           <Box
-            ref={imageRef}
-            component="img"
-            src={imageUrl}
-            alt="Chest X-Ray"
             sx={{
-              maxHeight: "95%",
-              maxWidth: "95%",
-              width: "auto",
-              height: "auto",
-              objectFit: "contain",
-              transition: "all 0.3s ease",
-            }}
-          />
-
-          <Box
-            sx={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              width: imageDimensions.width,
-              height: imageDimensions.height,
-              pointerEvents: "none",
+              position: "relative",
+              display: "inline-block",
+              lineHeight: 0,
             }}
           >
-            {findings.map((finding) => {
-              if (!finding.boundingBox) return null;
+            <img
+              src={imageUrl}
+              alt="Chest X-Ray"
+              style={{
+                display: "block",
+                maxHeight: "calc(100vh - 160px)",
+                maxWidth: "100%",
+                width: "auto",
+                height: "auto",
+                objectFit: "contain",
+                transition: "all 0.3s ease",
+              }}
+            />
+            {/* Plain div overlay — bypasses MUI sx so % values reach CSS directly */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                pointerEvents: "none",
+              }}
+            >
+              {findings.map((finding) => {
+                if (!finding.boundingBox) return null;
+                if (hiddenFindingIds.has(finding.id)) return null;
 
-              const { x, y, width, height } = finding.boundingBox;
-              const isSelected = finding.id === selectedFindingId;
+                const { x, y, width, height } = finding.boundingBox;
+                const isSelected = finding.id === selectedFindingId;
 
-              const scaledLeft = scaleCoordinate(x, imageDimensions.width);
-              const scaledTop = scaleCoordinate(y, imageDimensions.height);
-              const scaledWidth = scaleCoordinate(width, imageDimensions.width);
-              const scaledHeight = scaleCoordinate(
-                height,
-                imageDimensions.height,
-              );
+                // Convert 0-1000 coords to percentages so boxes scale with the image
+                const toPercent = (v: number) => `${(v / 1000) * 100}%`;
 
-              console.log(`=== FINDING ${finding.id} ===`);
-              console.log("Original coords from AI:", { x, y, width, height });
-              console.log("Image dimensions:", imageDimensions);
-              console.log("Scaled coords (actual pixels):", {
-                left: scaledLeft,
-                top: scaledTop,
-                width: scaledWidth,
-                height: scaledHeight,
-              });
-
-              return (
-                <Box
-                  key={finding.id}
-                  onClick={() => onFindingClick(finding.id)}
-                  sx={{
-                    position: "absolute",
-                    left: scaledLeft,
-                    top: scaledTop,
-                    width: scaledWidth,
-                    height: scaledHeight,
-                    border: isSelected
-                      ? "3px solid #ff9800"
-                      : "2px solid #d84315",
-                    bgcolor: isSelected
-                      ? "rgba(255, 152, 0, 0.2)"
-                      : "rgba(216, 67, 21, 0.15)",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    pointerEvents: "auto",
-                    transition: "all 0.2s ease",
-                    "&:hover": {
-                      bgcolor: "rgba(255, 152, 0, 0.25)",
-                      borderColor: "#ff9800",
-                      borderWidth: "3px",
-                    },
-                  }}
-                >
-                  <Box
-                    sx={{
+                return (
+                  <div
+                    key={finding.id}
+                    onClick={() => onFindingClick(finding.id)}
+                    style={{
                       position: "absolute",
-                      top: -24,
-                      left: 0,
-                      bgcolor: "rgba(0, 0, 0, 0.8)",
-                      color: "white",
-                      px: 1,
-                      py: 0.5,
+                      left: toPercent(x),
+                      top: toPercent(y),
+                      width: toPercent(width),
+                      height: toPercent(height),
+                      border: isSelected
+                        ? "3px solid #ff9800"
+                        : "2px solid #d84315",
+                      backgroundColor: isSelected
+                        ? "rgba(255, 152, 0, 0.2)"
+                        : "rgba(216, 67, 21, 0.15)",
                       borderRadius: "4px",
-                      fontSize: "0.75rem",
-                      fontWeight: "bold",
-                      whiteSpace: "nowrap",
+                      cursor: "pointer",
+                      pointerEvents: "auto",
+                      transition: "all 0.2s ease",
+                      boxSizing: "border-box",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor =
+                        "rgba(255, 152, 0, 0.25)";
+                      e.currentTarget.style.borderColor = "#ff9800";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = isSelected
+                        ? "rgba(255, 152, 0, 0.2)"
+                        : "rgba(216, 67, 21, 0.15)";
+                      e.currentTarget.style.borderColor = isSelected
+                        ? "#ff9800"
+                        : "#d84315";
                     }}
                   >
-                    {finding.id}
-                  </Box>
-                </Box>
-              );
-            })}
+                    {/* Finding ID label */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "-24px",
+                        left: 0,
+                        backgroundColor: "rgba(0,0,0,0.8)",
+                        color: "white",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        fontSize: "0.75rem",
+                        fontWeight: "bold",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {finding.id}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </Box>
         </>
       )}

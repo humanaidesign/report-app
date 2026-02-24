@@ -7,6 +7,8 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import base64
 import json
+import time
+
 
 load_dotenv()
 
@@ -23,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-USE_MOCK_DATA = False
+USE_MOCK_DATA = True
 
 class BoundingBox(BaseModel):
     x: float
@@ -74,7 +76,84 @@ def test_openai():
 @app.post("/api/analyze-xray")
 async def analyze_xray(file: UploadFile = File(...)):
     
-    print("ANALYZING X-RAY IMAGE")
+    if USE_MOCK_DATA:
+        time.sleep(1)
+        
+        mock_findings = [
+            {
+                "id": "1",
+                "text": "Large left pleural effusion",
+                "isCritical": True,
+                "boundingBox": {
+                    "x": 100,     
+                    "y": 500,    
+                    "width": 300, 
+                    "height": 400 
+                }
+            },
+            {
+                "id": "2",
+                "text": "Small right pleural effusion",
+                "isCritical": False,
+                "boundingBox": {
+                    "x": 600,      
+                    "y": 550,   
+                    "width": 250,
+                    "height": 350
+                }
+            },
+            {
+                "id": "3",
+                "text": "Cardiomegaly (enlarged heart)",
+                "isCritical": False,
+                "boundingBox": {
+                    "x": 350,     
+                    "y": 400,     
+                    "width": 300,
+                    "height": 350
+                }
+            },
+            {
+                "id": "4",
+                "text": "Degenerative changes in thoracic spine",
+                "isCritical": False,
+                "boundingBox": {
+                    "x": 450,    
+                    "y": 100,     
+                    "width": 100,
+                    "height": 600 
+                }
+            },
+            {
+                "id": "5",
+                "text": "Calcification in aortic arch",
+                "isCritical": False,
+                "boundingBox": {
+                    "x": 350,     
+                    "y": 200,
+                    "width": 150,
+                    "height": 120
+                }
+            },
+            {
+                "id": "6",
+                "text": "Right lower lobe opacity",
+                "isCritical": True,
+                "boundingBox": {
+                    "x": 550,    
+                    "y": 650,    
+                    "width": 250,
+                    "height": 250
+                }
+            }
+        ]
+        
+        print(f"Returning {len(mock_findings)} hardcoded findings:")
+        for finding in mock_findings:
+            print(f"  - {finding['text']}")
+        print("="*60 + "\n")
+        
+        return mock_findings
     
     image_bytes = await file.read()
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
@@ -186,6 +265,28 @@ async def analyze_xray(file: UploadFile = File(...)):
 async def generate_report(findings: List[Finding]):
     print("GENERATING REPORT")
     print(f"Received {len(findings)} findings")
+
+    if USE_MOCK_DATA:
+        time.sleep(1)
+
+        finding_text = []
+        for finding in findings:
+            finding_text.append(finding_text)
+
+        critical_findings = [f for f in findings if f.isCritical]
+
+        if critical_findings:
+            impression = ". ".join([f.text for f in critical_findings]) + "."
+        else:
+            impression = "No acute findings. " + findings[0].text if findings else "No significant abnormalities detected."
+
+        report = f"""Findings:
+{". ".join(finding_text)}. The cardiac silhouette size is within normal limits. The mediastinal contour is unremarkable. No pneumothorax is identified. Osseous structures show age-appropriate changes.
+
+Impression:
+{impression}"""
+        
+        return{"report": report}
     
     findings_context = ", ".join([f.text for f in findings])
     

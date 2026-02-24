@@ -18,10 +18,15 @@ function App() {
   };
 
   const [findings, setFindings] = useState<Finding[]>([]);
-  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(
+    null,
+  );
+  const [hiddenFindingIds, setHiddenFindingIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [imageUrl, setImageUrl] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  
+
   const [generatedReport, setGeneratedReport] = useState<string>("");
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
@@ -29,6 +34,7 @@ function App() {
     const imagePreviewUrl = URL.createObjectURL(file);
     setImageUrl(imagePreviewUrl);
     setIsAnalyzing(true);
+    setHiddenFindingIds(new Set());
 
     const formData = new FormData();
     formData.append("file", file);
@@ -64,6 +70,26 @@ function App() {
     setSelectedFindingId((prevId) => (prevId === id ? null : id));
   };
 
+  const handleToggleVisibility = (id: string) => {
+    setHiddenFindingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleRemoveFinding = (id: string) => {
+    setFindings((prevFindings) => prevFindings.filter((f) => f.id !== id));
+
+    if (selectedFindingId === id) {
+      setSelectedFindingId(null);
+    }
+  };
+
   const handleGenerateReport = async () => {
     if (findings.length === 0) {
       alert("No findings to generate report from");
@@ -73,13 +99,16 @@ function App() {
     setIsGeneratingReport(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/generate-report", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        "http://localhost:8000/api/generate-report",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(findings),
         },
-        body: JSON.stringify(findings),
-      });
+      );
 
       const data = await response.json();
 
@@ -113,12 +142,12 @@ function App() {
           sx={{ display: "flex", flex: 1, overflow: "hidden", p: 1, gap: 1 }}
         >
           <Box
-            sx={{ 
+            sx={{
               flex: "1 1 60%",
-              display: "flex", 
-              flexDirection: "column", 
+              display: "flex",
+              flexDirection: "column",
               gap: 1,
-              minWidth: 0
+              minWidth: 0,
             }}
           >
             <PatientContextBar patient={patient} />
@@ -127,6 +156,7 @@ function App() {
                 imageUrl={imageUrl}
                 findings={findings}
                 selectedFindingId={selectedFindingId}
+                hiddenFindingIds={hiddenFindingIds}
                 onFindingClick={handleFindingSelect}
                 onImageUpload={handleImageUpload}
                 isAnalyzing={isAnalyzing}
@@ -146,14 +176,17 @@ function App() {
             <AiInsights
               findings={findings}
               selectedFindingId={selectedFindingId}
+              hiddenFindingIds={hiddenFindingIds}
               onFindingSelect={handleFindingSelect}
+              onRemoveFinding={handleRemoveFinding}
+              onToggleVisibility={handleToggleVisibility}
               onGenerateReport={handleGenerateReport}
               isGeneratingReport={isGeneratingReport}
             />
           </Box>
 
           <Box sx={{ flex: "1 1 30%" }}>
-            <NarrativeReport 
+            <NarrativeReport
               reportText={generatedReport}
               onReportChange={setGeneratedReport}
             />
