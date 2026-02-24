@@ -1,7 +1,5 @@
 # X-Ray Analysis Tool
 
-An AI-powered chest X-ray analysis tool that detects findings, draws bounding boxes on the image, and generates a narrative radiology report.
-
 ## Prerequisites
 
 Make sure you have the following installed before you begin:
