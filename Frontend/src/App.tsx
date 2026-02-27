@@ -26,7 +26,6 @@ function App() {
   );
   const [imageUrl, setImageUrl] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-
   const [generatedReport, setGeneratedReport] = useState<string>("");
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
@@ -84,7 +83,6 @@ function App() {
 
   const handleRemoveFinding = (id: string) => {
     setFindings((prevFindings) => prevFindings.filter((f) => f.id !== id));
-
     if (selectedFindingId === id) {
       setSelectedFindingId(null);
     }
@@ -103,9 +101,7 @@ function App() {
         "http://localhost:8000/api/generate-report",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(findings),
         },
       );
@@ -185,8 +181,10 @@ function App() {
             />
           </Box>
 
-          <Box sx={{ flex: "1 1 30%" }}>
+          <Box sx={{ flex: "1 1 30%", overflow: "hidden" }}>
             <NarrativeReport
+              findings={findings}
+              selectedFindingId={selectedFindingId}
               reportText={generatedReport}
               onReportChange={setGeneratedReport}
             />
