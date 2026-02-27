@@ -1,5 +1,9 @@
 # X-Ray Analysis Tool
 
+## Image of front end 
+<img width="1903" height="892" alt="Report Finding Ranked" src="https://github.com/user-attachments/assets/1d4c81ac-7ce0-46b3-8150-718e606b2e87" />
+
+
 ## Prerequisites
 
 Make sure you have the following installed before you begin:
