@@ -38,6 +38,7 @@ class Finding(BaseModel):
     text: str
     isCritical: bool
     boundingBox: Optional[BoundingBox] = None
+    status: Optional[str] = "same"
 
 @app.get("/")
 def read_root():
@@ -45,7 +46,6 @@ def read_root():
         "message": "X-Ray Analysis API is running",
         "endpoints": {
             "test_openai": "/api/test-openai",
-            "findings": "/api/findings",
             "analyze_xray": "/api/analyze-xray",
             "generate_report": "/api/generate-report"
         }
@@ -56,147 +56,89 @@ def test_openai():
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": "Say 'API is working"}
-            ],
+            messages=[{"role": "user", "content": "Say 'API is working'"}],
             max_tokens=50
         )
-        result = response.choices[0].message.content
-        
-        return {
-            "status": "success",
-            "message": result,
-        }
+        return {"status": "success", "message": response.choices[0].message.content}
     except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e),
-        }
+        return {"status": "error", "error": str(e)}
 
 @app.post("/api/analyze-xray")
 async def analyze_xray(file: UploadFile = File(...)):
-    
+
     if USE_MOCK_DATA:
         time.sleep(1)
-        
+
         mock_findings = [
             {
                 "id": "1",
                 "text": "Large left pleural effusion",
                 "isCritical": True,
-                "boundingBox": {
-                    "x": 100,     
-                    "y": 500,    
-                    "width": 300, 
-                    "height": 400 
-                }
+                "status": "worsened",
+                "boundingBox": {"x": 100, "y": 500, "width": 300, "height": 400}
             },
             {
                 "id": "2",
                 "text": "Small right pleural effusion",
                 "isCritical": False,
-                "boundingBox": {
-                    "x": 600,      
-                    "y": 550,   
-                    "width": 250,
-                    "height": 350
-                }
+                "status": "changed",
+                "boundingBox": {"x": 600, "y": 550, "width": 250, "height": 350}
             },
             {
                 "id": "3",
                 "text": "Cardiomegaly (enlarged heart)",
                 "isCritical": False,
-                "boundingBox": {
-                    "x": 350,     
-                    "y": 400,     
-                    "width": 300,
-                    "height": 350
-                }
+                "status": "same",
+                "boundingBox": {"x": 350, "y": 400, "width": 300, "height": 350}
             },
             {
                 "id": "4",
                 "text": "Degenerative changes in thoracic spine",
                 "isCritical": False,
-                "boundingBox": {
-                    "x": 450,    
-                    "y": 100,     
-                    "width": 100,
-                    "height": 600 
-                }
+                "status": "same",
+                "boundingBox": {"x": 450, "y": 100, "width": 100, "height": 600}
             },
             {
                 "id": "5",
                 "text": "Calcification in aortic arch",
                 "isCritical": False,
-                "boundingBox": {
-                    "x": 350,     
-                    "y": 200,
-                    "width": 150,
-                    "height": 120
-                }
+                "status": "same",
+                "boundingBox": {"x": 350, "y": 200, "width": 150, "height": 120}
             },
             {
                 "id": "6",
                 "text": "Right lower lobe opacity",
                 "isCritical": True,
-                "boundingBox": {
-                    "x": 550,    
-                    "y": 650,    
-                    "width": 250,
-                    "height": 250
-                }
+                "status": "worsened",
+                "boundingBox": {"x": 550, "y": 650, "width": 250, "height": 250}
             }
         ]
-        
-        print(f"Returning {len(mock_findings)} hardcoded findings:")
-        for finding in mock_findings:
-            print(f"  - {finding['text']}")
-        print("="*60 + "\n")
-        
+
+        for f in mock_findings:
+            print(f"  [{f['status'].upper()}] {f['text']}")
+
         return mock_findings
-    
+
     image_bytes = await file.read()
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
-    
-    print(f"Image size: {len(image_bytes)} bytes")
-    
+
     analysis_prompt = """
     You are an expert radiologist analyzing a chest X-ray image.
-    
-    Your task:
-    1. Identify all visible abnormalities, findings, or conditions
-    2. For each finding, estimate its location on the image as a bounding box
-    3. Determine if each finding is critical/urgent
-    
-    Return your analysis as a JSON array with this exact structure:
-    [
-      {
-        "id": "1",
-        "text": "Description of finding",
-        "isCritical": true,
-        "boundingBox": {
-          "x": 100,
-          "y": 150,
-          "width": 200,
-          "height": 180
-        }
-      }
-    ]
-    
-    IMPORTANT RULES:
-    - Use a coordinate system where the image is 1000 pixels wide and 1000 pixels tall
-    - x and y are the TOP-LEFT corner of the bounding box
-    - width and height are the dimensions of the box
-    - Return ONLY the JSON array, no markdown, no extra text
-    - If you see multiple findings, include all of them
+
+    Identify all visible abnormalities and return a JSON array. Each finding must include:
+    - id (string number)
+    - text (description)
+    - isCritical (boolean)
+    - status: one of "worsened", "changed", or "same" based on typical clinical presentation
+    - boundingBox with x, y, width, height (coordinate system: 1000x1000)
+
+    Return ONLY the JSON array, no markdown or extra text.
     """
-    
+
     models_to_try = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
-    
+
     for model_name in models_to_try:
         try:
-            print(f"Trying model: {model_name}")
-            
             response = client.chat.completions.create(
                 model=model_name,
                 messages=[
@@ -204,96 +146,57 @@ async def analyze_xray(file: UploadFile = File(...)):
                         "role": "user",
                         "content": [
                             {"type": "text", "text": analysis_prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                }
-                            }
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                         ]
                     }
                 ],
                 max_tokens=1000,
                 temperature=0.3
             )
-            
-            print(f"Model {model_name} succeeded")
-            
-            ai_response = response.choices[0].message.content
-            
-            print(ai_response)
-            
-            cleaned_response = ai_response.strip()
-            if cleaned_response.startswith("```json"):
-                cleaned_response = cleaned_response[7:]
-            if cleaned_response.startswith("```"):
-                cleaned_response = cleaned_response[3:]
-            if cleaned_response.endswith("```"):
-                cleaned_response = cleaned_response[:-3]
-            cleaned_response = cleaned_response.strip()
-            
-            print(cleaned_response)
-            
-            findings_data = json.loads(cleaned_response)
-            
-            print(f"\nParsed {len(findings_data)} findings:")
-            for i, finding in enumerate(findings_data, 1):
-                print(f"\nFinding {i}:")
-                print(f"  ID: {finding.get('id')}")
-                print(f"  Text: {finding.get('text')}")
-                print(f"  Critical: {finding.get('isCritical')}")
-                if finding.get('boundingBox'):
-                    bb = finding['boundingBox']
-                    print(f"  BoundingBox: x={bb['x']}, y={bb['y']}, width={bb['width']}, height={bb['height']}")
-                else:
-                    print(f"  BoundingBox: None")
-            
-            print("RETURNING FINDINGS TO FRONTEND")            
-            return findings_data
-            
+
+            ai_response = response.choices[0].message.content.strip()
+            if ai_response.startswith("```json"):
+                ai_response = ai_response[7:]
+            if ai_response.startswith("```"):
+                ai_response = ai_response[3:]
+            if ai_response.endswith("```"):
+                ai_response = ai_response[:-3]
+
+            return json.loads(ai_response.strip())
+
         except Exception as e:
             print(f"Model {model_name} failed: {str(e)}")
             if model_name == models_to_try[-1]:
-                print("\nAll models failed!")
-                return {
-                    "error": f"All models failed. Last error: {str(e)}",
-                    "tried_models": models_to_try
-                }
+                return {"error": f"All models failed. Last error: {str(e)}"}
             continue
 
 @app.post("/api/generate-report")
 async def generate_report(findings: List[Finding]):
-    print("GENERATING REPORT")
-    print(f"Received {len(findings)} findings")
+    print(f"Generating report for {len(findings)} findings")
 
     if USE_MOCK_DATA:
         time.sleep(1)
 
-        finding_text = []
-        for finding in findings:
-            finding_text.append(finding_text)
-
+        finding_texts = [f.text for f in findings]
         critical_findings = [f for f in findings if f.isCritical]
 
         if critical_findings:
             impression = ". ".join([f.text for f in critical_findings]) + "."
         else:
-            impression = "No acute findings. " + findings[0].text if findings else "No significant abnormalities detected."
+            impression = ("No acute findings. " + findings[0].text) if findings else "No significant abnormalities detected."
 
         report = f"""Findings:
-{". ".join(finding_text)}. The cardiac silhouette size is within normal limits. The mediastinal contour is unremarkable. No pneumothorax is identified. Osseous structures show age-appropriate changes.
+{". ".join(finding_texts)}. The cardiac silhouette size is within normal limits. The mediastinal contour is unremarkable. No pneumothorax is identified. Osseous structures show age-appropriate changes.
 
 Impression:
 {impression}"""
-        
-        return{"report": report}
-    
+
+        return {"report": report}
+
     findings_context = ", ".join([f.text for f in findings])
-    
-    print(f"Findings context: {findings_context}")
-    
+
     system_prompt = """You are an expert radiologist. Generate a formal, concise narrative medical report.
-    
+
 The report must include:
 1. A 'Findings' section with detailed observations
 2. An 'Impression' section with key diagnoses
@@ -318,15 +221,8 @@ Impression:
             temperature=0.7,
             max_tokens=500
         )
-        
-        report = response.choices[0].message.content
-        
-        print("\nGENERATED REPORT:")
-        print(report)
-        print("\n" + "="*60)
-        
-        return {"report": report}
-        
+        return {"report": response.choices[0].message.content}
+
     except Exception as e:
         print(f"Error generating report: {str(e)}")
         return {"error": str(e)}

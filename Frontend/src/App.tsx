@@ -2,8 +2,7 @@ import { Box, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import Header from "./componets/Header";
 import XRayViewer from "./componets/XRayView";
 import PatientContextBar from "./componets/PatientInfo";
-import AiInsights from "./componets/AiInsight";
-import NarrativeReport from "./componets/NarrativeReport";
+import CombinedPanel from "./componets/Combinedfinding";
 import { useState } from "react";
 import type { Finding } from "./types";
 
@@ -18,15 +17,11 @@ function App() {
   };
 
   const [findings, setFindings] = useState<Finding[]>([]);
-  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(
-    null,
-  );
-  const [hiddenFindingIds, setHiddenFindingIds] = useState<Set<string>>(
-    new Set(),
-  );
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [hiddenFindingIds, setHiddenFindingIds] = useState<Set<string>>(new Set());
+  const [allBoxesHidden, setAllBoxesHidden] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-
   const [generatedReport, setGeneratedReport] = useState<string>("");
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
@@ -35,6 +30,7 @@ function App() {
     setImageUrl(imagePreviewUrl);
     setIsAnalyzing(true);
     setHiddenFindingIds(new Set());
+    setAllBoxesHidden(false);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -84,10 +80,13 @@ function App() {
 
   const handleRemoveFinding = (id: string) => {
     setFindings((prevFindings) => prevFindings.filter((f) => f.id !== id));
-
     if (selectedFindingId === id) {
       setSelectedFindingId(null);
     }
+  };
+
+  const handleToggleAllBoxes = () => {
+    setAllBoxesHidden((prev) => !prev);
   };
 
   const handleGenerateReport = async () => {
@@ -99,16 +98,11 @@ function App() {
     setIsGeneratingReport(true);
 
     try {
-      const response = await fetch(
-        "http://localhost:8000/api/generate-report",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(findings),
-        },
-      );
+      const response = await fetch("http://localhost:8000/api/generate-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(findings),
+      });
 
       const data = await response.json();
 
@@ -138,12 +132,11 @@ function App() {
       >
         <Header doctorName="John Doe, MD" />
 
-        <Box
-          sx={{ display: "flex", flex: 1, overflow: "hidden", p: 1, gap: 1 }}
-        >
+        <Box sx={{ display: "flex", flex: 1, overflow: "hidden", p: 1, gap: 1 }}>
+          {/* Left: X-Ray viewer */}
           <Box
             sx={{
-              flex: "1 1 60%",
+              flex: "1 1 65%",
               display: "flex",
               flexDirection: "column",
               gap: 1,
@@ -157,6 +150,7 @@ function App() {
                 findings={findings}
                 selectedFindingId={selectedFindingId}
                 hiddenFindingIds={hiddenFindingIds}
+                allBoxesHidden={allBoxesHidden}
                 onFindingClick={handleFindingSelect}
                 onImageUpload={handleImageUpload}
                 isAnalyzing={isAnalyzing}
@@ -164,29 +158,26 @@ function App() {
             </Box>
           </Box>
 
+          {/* Right: Combined findings + impression panel */}
           <Box
             sx={{
               mt: 6,
-              flex: "0 0 300px",
+              flex: "0 0 420px",
               maxHeight: "100%",
               borderRadius: 1,
               overflow: "hidden",
             }}
           >
-            <AiInsights
+            <CombinedPanel
               findings={findings}
               selectedFindingId={selectedFindingId}
               hiddenFindingIds={hiddenFindingIds}
+              allBoxesHidden={allBoxesHidden}
               onFindingSelect={handleFindingSelect}
               onRemoveFinding={handleRemoveFinding}
-              onToggleVisibility={handleToggleVisibility}
+              onToggleAllBoxes={handleToggleAllBoxes}
               onGenerateReport={handleGenerateReport}
               isGeneratingReport={isGeneratingReport}
-            />
-          </Box>
-
-          <Box sx={{ flex: "1 1 30%" }}>
-            <NarrativeReport
               reportText={generatedReport}
               onReportChange={setGeneratedReport}
             />
