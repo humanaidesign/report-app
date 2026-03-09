@@ -1,5 +1,9 @@
 # X-Ray Analysis Tool
 
+## Image of front end
+<img width="1917" height="902" alt="image" src="https://github.com/user-attachments/assets/ad8da0cd-9a42-49c0-bf6c-7cb63872b0e2" />
+
+
 ## Prerequisites
 
 Make sure you have the following installed before you begin:
