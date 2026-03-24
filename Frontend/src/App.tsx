@@ -17,8 +17,12 @@ function App() {
   };
 
   const [findings, setFindings] = useState<Finding[]>([]);
-  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
-  const [hiddenFindingIds, setHiddenFindingIds] = useState<Set<string>>(new Set());
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(
+    null,
+  );
+  const [hiddenFindingIds, setHiddenFindingIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [allBoxesHidden, setAllBoxesHidden] = useState(false);
   const [imageUrl, setImageUrl] = useState<string>("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -66,18 +70,6 @@ function App() {
     setSelectedFindingId((prevId) => (prevId === id ? null : id));
   };
 
-  const handleToggleVisibility = (id: string) => {
-    setHiddenFindingIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
   const handleRemoveFinding = (id: string) => {
     setFindings((prevFindings) => prevFindings.filter((f) => f.id !== id));
     if (selectedFindingId === id) {
@@ -98,11 +90,14 @@ function App() {
     setIsGeneratingReport(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/generate-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(findings),
-      });
+      const response = await fetch(
+        "http://localhost:8000/api/generate-report",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(findings),
+        },
+      );
 
       const data = await response.json();
 
@@ -119,6 +114,17 @@ function App() {
     }
   };
 
+  const handleAddFinding = (text: string) => {
+    const newFinding: Finding = {
+      id: String(Date.now()),
+      text,
+      isCritical: false,
+      status: "same",
+      boundingBox: undefined,
+    };
+    setFindings((prev) => [...prev, newFinding]);
+  };
+
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
@@ -132,11 +138,12 @@ function App() {
       >
         <Header doctorName="John Doe, MD" />
 
-        <Box sx={{ display: "flex", flex: 1, overflow: "hidden", p: 1, gap: 1 }}>
-          {/* Left: X-Ray viewer */}
+        <Box
+          sx={{ display: "flex", flex: 1, overflow: "hidden", p: 1, gap: 1 }}
+        >
           <Box
             sx={{
-              flex: "1 1 65%",
+              flex: "1 1 62%",
               display: "flex",
               flexDirection: "column",
               gap: 1,
@@ -158,11 +165,10 @@ function App() {
             </Box>
           </Box>
 
-          {/* Right: Combined findings + impression panel */}
           <Box
             sx={{
               mt: 6,
-              flex: "0 0 420px",
+              flex: "0 0 38%",
               maxHeight: "100%",
               borderRadius: 1,
               overflow: "hidden",
@@ -180,6 +186,7 @@ function App() {
               isGeneratingReport={isGeneratingReport}
               reportText={generatedReport}
               onReportChange={setGeneratedReport}
+              onAddFinding={handleAddFinding}
             />
           </Box>
         </Box>

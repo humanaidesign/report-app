@@ -1,7 +1,7 @@
 export interface PatientData {
   name: string;
   age: number;
-  gender: 'M' | 'F';
+  gender: "M" | "F";
   indication: string;
 }
 
@@ -20,7 +20,6 @@ export interface StructuredFinding {
   description: string;
   status: FindingStatus;
 }
-
 
 export interface Finding {
   id: string;

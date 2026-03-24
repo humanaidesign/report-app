@@ -1,3 +1,4 @@
+import React, { useState, useRef, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -7,13 +8,52 @@ import {
   Stack,
   Divider,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
+import MicIcon from "@mui/icons-material/Mic";
+import StopIcon from "@mui/icons-material/Stop";
 import type { Finding, FindingStatus } from "../types";
+
+interface ISpeechRecognitionEvent {
+  results: {
+    length: number;
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface ISpeechRecognitionErrorEvent {
+  error: string;
+}
+
+interface ISpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: ISpeechRecognitionEvent) => void) | null;
+  onerror: ((event: ISpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => ISpeechRecognition;
+    webkitSpeechRecognition: new () => ISpeechRecognition;
+  }
+}
 
 interface CombinedPanelProps {
   findings: Finding[];
@@ -27,9 +67,9 @@ interface CombinedPanelProps {
   isGeneratingReport: boolean;
   reportText: string;
   onReportChange: (text: string) => void;
+  onAddFinding: (text: string) => void;
 }
 
-// Abnormal = red/yellow (worsened or changed), Normal = gray (same)
 const STATUS_CONFIG: Record<
   "abnormal" | "normal",
   { color: string; bg: string; border: string; label: string; dot: string }
@@ -96,7 +136,6 @@ function StatusPill({ status }: { status: FindingStatus }) {
 const CombinedPanel: React.FC<CombinedPanelProps> = ({
   findings,
   selectedFindingId,
-  hiddenFindingIds,
   allBoxesHidden,
   onFindingSelect,
   onRemoveFinding,
@@ -105,7 +144,102 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
   isGeneratingReport,
   reportText,
   onReportChange,
+  onAddFinding,
 }) => {
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [speechError, setSpeechError] = useState("");
+  const [showDestinationModal, setShowDestinationModal] = useState(false);
+
+  const recognitionRef = useRef<ISpeechRecognition | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  const startListening = () => {
+    setSpeechError("");
+    setTranscript("");
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setSpeechError(
+        "Speech recognition is not supported in this browser. Please use Chrome or Edge.",
+      );
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event: ISpeechRecognitionEvent) => {
+      let fullTranscript = "";
+      for (let i = 0; i < event.results.length; i++) {
+        fullTranscript += event.results[i][0].transcript;
+      }
+      setTranscript(fullTranscript);
+    };
+
+    recognition.onerror = (event: ISpeechRecognitionErrorEvent) => {
+      setSpeechError(`Microphone error: ${event.error}`);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setIsListening(false);
+    if (transcript.trim()) {
+      setShowDestinationModal(true);
+    }
+  };
+
+  const handleSendToFinding = () => {
+    if (transcript.trim()) {
+      onAddFinding(transcript.trim());
+    }
+    setShowDestinationModal(false);
+    setTranscript("");
+  };
+
+  const handleSendToImpression = () => {
+    if (transcript.trim()) {
+      const currentFindings = findings.map((f) => f.text).join(". ");
+      const currentImpression = parseImpression(reportText);
+      const newImpression = currentImpression
+        ? `${currentImpression} ${transcript.trim()}`
+        : transcript.trim();
+      onReportChange(
+        `Findings:\n${currentFindings}\n\nImpression:\n${newImpression}`,
+      );
+    }
+    setShowDestinationModal(false);
+    setTranscript("");
+  };
+
+  const handleCancelModal = () => {
+    setShowDestinationModal(false);
+    setTranscript("");
+  };
+
   const parseImpression = (text: string): string => {
     if (!text) return "";
     const match = text.match(/Impression:?\s*([\s\S]*?)$/i);
@@ -114,10 +248,11 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
 
   const impression = parseImpression(reportText);
 
-  // Sort: abnormal first, then by isCritical
   const sorted = [...findings].sort((a, b) => {
-    const aAbnormal = getCategory(a.status ?? "same") === "abnormal" ? 0 : 1;
-    const bAbnormal = getCategory(b.status ?? "same") === "abnormal" ? 0 : 1;
+    const aAbnormal =
+      getCategory((a.status ?? "same") as FindingStatus) === "abnormal" ? 0 : 1;
+    const bAbnormal =
+      getCategory((b.status ?? "same") as FindingStatus) === "abnormal" ? 0 : 1;
     if (aAbnormal !== bAbnormal) return aAbnormal - bAbnormal;
     if (a.isCritical && !b.isCritical) return -1;
     if (!a.isCritical && b.isCritical) return 1;
@@ -135,7 +270,6 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
         borderRadius: 1,
       }}
     >
-      {/* ── Header ── */}
       <Box
         sx={{
           px: 1.5,
@@ -161,10 +295,14 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
         </Typography>
       </Box>
 
-      {/* ── Scrollable body ── */}
-      <Box sx={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-
-        {/* ── Findings section header ── */}
+      <Box
+        sx={{
+          flex: 1,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <Box
           sx={{
             px: 1.5,
@@ -187,11 +325,14 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           >
             Findings
           </Typography>
-          {/* Single eye toggle — controls all bounding boxes on X-ray */}
           <IconButton
             size="small"
             onClick={onToggleAllBoxes}
-            title={allBoxesHidden ? "Show all bounding boxes" : "Hide all bounding boxes"}
+            title={
+              allBoxesHidden
+                ? "Show all bounding boxes"
+                : "Hide all bounding boxes"
+            }
             sx={{
               p: "3px",
               color: allBoxesHidden ? "#2a3540" : "#607d8b",
@@ -206,7 +347,6 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           </IconButton>
         </Box>
 
-        {/* ── Finding rows ── */}
         <Box sx={{ px: 1.25, pb: 1 }}>
           <Stack spacing={0.75}>
             {findings.length === 0 ? (
@@ -223,7 +363,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
             ) : (
               sorted.map((item) => {
                 const isSelected = item.id === selectedFindingId;
-                const status = item.status ?? "same";
+                const status = (item.status ?? "same") as FindingStatus;
                 const cat = getCategory(status);
                 const cfg = STATUS_CONFIG[cat];
 
@@ -251,7 +391,6 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                       },
                     }}
                   >
-                    {/* Color bar */}
                     <Box
                       sx={{
                         width: 3,
@@ -283,6 +422,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <StatusPill status={status} />
+                      {!item.boundingBox}
                       <IconButton
                         size="small"
                         onClick={() => onRemoveFinding(item.id)}
@@ -305,15 +445,14 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           </Stack>
         </Box>
 
-        {/* ── Add finding button ── */}
-        <Box sx={{ px: 1.25, pb: 1.25 }}>
+        <Box sx={{ px: 1.25, pb: 1.25, display: "flex", gap: 0.75 }}>
           <Button
             variant="outlined"
             size="small"
             startIcon={<AddIcon sx={{ fontSize: 14 }} />}
             disabled={findings.length === 0}
-            fullWidth
             sx={{
+              flex: 1,
               fontSize: "0.75rem",
               borderColor: "rgba(255,255,255,0.15)",
               color: "#78909c",
@@ -325,11 +464,103 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           >
             Add Finding
           </Button>
+
+          <IconButton
+            size="small"
+            onClick={isListening ? stopListening : startListening}
+            title={
+              isListening ? "Stop recording" : "Dictate a finding or impression"
+            }
+            sx={{
+              border: "1px solid",
+              borderColor: isListening
+                ? "rgba(239, 83, 80, 0.6)"
+                : "rgba(255,255,255,0.15)",
+              borderRadius: "6px",
+              px: 1,
+              color: isListening ? "#ef5350" : "#78909c",
+              bgcolor: isListening ? "rgba(239, 83, 80, 0.1)" : "transparent",
+              animation: isListening
+                ? "pulse 1.4s ease-in-out infinite"
+                : "none",
+              "@keyframes pulse": {
+                "0%": { boxShadow: "0 0 0 0 rgba(239, 83, 80, 0.4)" },
+                "70%": { boxShadow: "0 0 0 6px rgba(239, 83, 80, 0)" },
+                "100%": { boxShadow: "0 0 0 0 rgba(239, 83, 80, 0)" },
+              },
+              "&:hover": {
+                borderColor: isListening
+                  ? "rgba(239, 83, 80, 0.9)"
+                  : "rgba(255,255,255,0.3)",
+                bgcolor: isListening
+                  ? "rgba(239, 83, 80, 0.18)"
+                  : "rgba(255,255,255,0.04)",
+              },
+            }}
+          >
+            {isListening ? (
+              <StopIcon sx={{ fontSize: 16 }} />
+            ) : (
+              <MicIcon sx={{ fontSize: 16 }} />
+            )}
+          </IconButton>
         </Box>
+
+        {isListening && (
+          <Box
+            sx={{
+              mx: 1.25,
+              mb: 1,
+              px: 1.25,
+              py: 1,
+              bgcolor: "rgba(239, 83, 80, 0.06)",
+              border: "1px solid rgba(239, 83, 80, 0.25)",
+              borderRadius: "6px",
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: "0.72rem",
+                color: "#ef5350",
+                fontWeight: 700,
+                mb: 0.5,
+              }}
+            >
+              ● RECORDING
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.8rem",
+                color: transcript ? "#cfd8dc" : "#546e7a",
+                fontStyle: transcript ? "normal" : "italic",
+                lineHeight: 1.4,
+              }}
+            >
+              {transcript || "Start speaking…"}
+            </Typography>
+          </Box>
+        )}
+
+        {speechError && (
+          <Box
+            sx={{
+              mx: 1.25,
+              mb: 1,
+              px: 1.25,
+              py: 0.75,
+              bgcolor: "rgba(239, 83, 80, 0.08)",
+              border: "1px solid rgba(239, 83, 80, 0.3)",
+              borderRadius: "6px",
+            }}
+          >
+            <Typography sx={{ fontSize: "0.78rem", color: "#ef9a9a" }}>
+              {speechError}
+            </Typography>
+          </Box>
+        )}
 
         <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
 
-        {/* ── Impression section ── */}
         <Box sx={{ px: 1.5, pt: 1.25, pb: 0.75 }}>
           <Typography
             sx={{
@@ -344,7 +575,6 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
             Impression
           </Typography>
 
-          {/* Create Report button — above impression */}
           <Button
             variant="contained"
             size="small"
@@ -403,7 +633,6 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
         </Box>
       </Box>
 
-      {/* ── Footer actions ── */}
       <Box
         sx={{
           px: 1.25,
@@ -446,6 +675,116 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           Submit Report
         </Button>
       </Box>
+
+      <Dialog
+        open={showDestinationModal}
+        onClose={handleCancelModal}
+        PaperProps={{
+          sx: {
+            bgcolor: "#1e2730",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "10px",
+            minWidth: 340,
+            maxWidth: 420,
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            color: "#eceff1",
+            fontSize: "0.92rem",
+            fontWeight: 700,
+            pb: 0.5,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+          }}
+        >
+          <MicIcon sx={{ fontSize: 18, color: "#78909c" }} />
+          Where should this go?
+        </DialogTitle>
+
+        <DialogContent sx={{ pt: 1 }}>
+          <Box
+            sx={{
+              bgcolor: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "6px",
+              px: 1.5,
+              py: 1,
+              mb: 2,
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: "0.8rem",
+                color: "#90a4ae",
+                mb: 0.25,
+                fontWeight: 600,
+              }}
+            >
+              Transcribed text
+            </Typography>
+            <Typography
+              sx={{ fontSize: "0.88rem", color: "#cfd8dc", lineHeight: 1.5 }}
+            >
+              "{transcript}"
+            </Typography>
+          </Box>
+
+          <Stack spacing={1}>
+            <Button
+              variant="outlined"
+              fullWidth
+              onClick={handleSendToFinding}
+              startIcon={<AddIcon />}
+              sx={{
+                justifyContent: "flex-start",
+                borderColor: "rgba(144, 164, 174, 0.4)",
+                color: "#90a4ae",
+                fontSize: "0.82rem",
+                py: 1,
+                "&:hover": {
+                  borderColor: "#90a4ae",
+                  bgcolor: "rgba(144, 164, 174, 0.08)",
+                },
+              }}
+            >
+              Add as a new Finding
+            </Button>
+
+            <Button
+              variant="outlined"
+              fullWidth
+              onClick={handleSendToImpression}
+              startIcon={<MicIcon />}
+              sx={{
+                justifyContent: "flex-start",
+                borderColor: "rgba(25, 118, 210, 0.5)",
+                color: "#64b5f6",
+                fontSize: "0.82rem",
+                py: 1,
+                "&:hover": {
+                  borderColor: "#1976d2",
+                  bgcolor: "rgba(25, 118, 210, 0.08)",
+                },
+              }}
+            >
+              Append to Impression
+            </Button>
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 2, pb: 2, pt: 0.5 }}>
+          <Button
+            onClick={handleCancelModal}
+            size="small"
+            sx={{ color: "#546e7a", fontSize: "0.78rem" }}
+          >
+            Discard
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

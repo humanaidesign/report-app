@@ -40,6 +40,49 @@ class Finding(BaseModel):
     boundingBox: Optional[BoundingBox] = None
     status: Optional[str] = "same"
 
+
+def parse_model_findings(raw_findings: list) -> list:
+    parsed = []
+    for i, item in enumerate(raw_findings):
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            text, bbox_raw = item
+        elif isinstance(item, dict):
+            text = item.get("text", "")
+            bbox_raw = item.get("boundingBox", None)
+        else:
+            continue
+
+        bounding_box = None
+        if bbox_raw is not None:
+            if isinstance(bbox_raw, (list, tuple)) and len(bbox_raw) == 4:
+                x_min, y_min, x_max, y_max = bbox_raw
+                bounding_box = {
+                    "x": x_min * 1000,
+                    "y": y_min * 1000,
+                    "width": (x_max - x_min) * 1000,
+                    "height": (y_max - y_min) * 1000,
+                }
+            elif isinstance(bbox_raw, dict):
+                bounding_box = bbox_raw
+
+        critical_keywords = [
+            "effusion", "pneumothorax", "opacity", "consolidation",
+            "mass", "nodule", "fracture", "tamponade", "edema"
+        ]
+        is_critical = any(kw in text.lower() for kw in critical_keywords)
+        status = "worsened" if is_critical else "same"
+
+        parsed.append({
+            "id": str(i + 1),
+            "text": text,
+            "isCritical": is_critical,
+            "status": status,
+            "boundingBox": bounding_box,
+        })
+
+    return parsed
+
+
 @app.get("/")
 def read_root():
     return {
@@ -69,55 +112,21 @@ async def analyze_xray(file: UploadFile = File(...)):
     if USE_MOCK_DATA:
         time.sleep(1)
 
-        mock_findings = [
-            {
-                "id": "1",
-                "text": "Large left pleural effusion",
-                "isCritical": True,
-                "status": "worsened",
-                "boundingBox": {"x": 100, "y": 500, "width": 300, "height": 400}
-            },
-            {
-                "id": "2",
-                "text": "Small right pleural effusion",
-                "isCritical": False,
-                "status": "changed",
-                "boundingBox": {"x": 600, "y": 550, "width": 250, "height": 350}
-            },
-            {
-                "id": "3",
-                "text": "Cardiomegaly (enlarged heart)",
-                "isCritical": False,
-                "status": "same",
-                "boundingBox": {"x": 350, "y": 400, "width": 300, "height": 350}
-            },
-            {
-                "id": "4",
-                "text": "Degenerative changes in thoracic spine",
-                "isCritical": False,
-                "status": "same",
-                "boundingBox": {"x": 450, "y": 100, "width": 100, "height": 600}
-            },
-            {
-                "id": "5",
-                "text": "Calcification in aortic arch",
-                "isCritical": False,
-                "status": "same",
-                "boundingBox": {"x": 350, "y": 200, "width": 150, "height": 120}
-            },
-            {
-                "id": "6",
-                "text": "Right lower lobe opacity",
-                "isCritical": True,
-                "status": "worsened",
-                "boundingBox": {"x": 550, "y": 650, "width": 250, "height": 250}
-            }
+        raw_model_output = [
+            ("There is a large right pleural effusion.", [0.055, 0.275, 0.445, 0.665]),
+            ("The left lung is clear.", None),
+            ("No pneumothorax is identified.", None),
+            ("The cardiomediastinal silhouette is within normal limits.", None),
+            ("The visualized osseous structures are unremarkable.", None),
         ]
 
-        for f in mock_findings:
-            print(f"  [{f['status'].upper()}] {f['text']}")
+        findings = parse_model_findings(raw_model_output)
 
-        return mock_findings
+        for f in findings:
+            has_box = "with box" if f["boundingBox"] else "no box"
+            print(f"  [{'CRITICAL' if f['isCritical'] else 'normal'}] {f['text']} ({has_box})")
+
+        return findings
 
     image_bytes = await file.read()
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
@@ -125,12 +134,16 @@ async def analyze_xray(file: UploadFile = File(...)):
     analysis_prompt = """
     You are an expert radiologist analyzing a chest X-ray image.
 
-    Identify all visible abnormalities and return a JSON array. Each finding must include:
-    - id (string number)
-    - text (description)
-    - isCritical (boolean)
-    - status: one of "worsened", "changed", or "same" based on typical clinical presentation
-    - boundingBox with x, y, width, height (coordinate system: 1000x1000)
+    Return a JSON array of findings. Each finding must have:
+    - "text": a string describing the observation
+    - "boundingBox": an object with x, y, width, height in a 1000x1000 coordinate system,
+      or null if the finding has no specific localizable region
+
+    Example:
+    [
+      {"text": "Large left pleural effusion", "boundingBox": {"x": 100, "y": 500, "width": 300, "height": 400}},
+      {"text": "No pneumothorax identified", "boundingBox": null}
+    ]
 
     Return ONLY the JSON array, no markdown or extra text.
     """
@@ -154,7 +167,11 @@ async def analyze_xray(file: UploadFile = File(...)):
                 temperature=0.3
             )
 
-            ai_response = response.choices[0].message.content.strip()
+            ai_response = response.choices[0].message.content
+            if ai_response is None:
+                raise ValueError("Empty response from API")
+            
+            ai_response = ai_response.strip()
             if ai_response.startswith("```json"):
                 ai_response = ai_response[7:]
             if ai_response.startswith("```"):
@@ -162,7 +179,8 @@ async def analyze_xray(file: UploadFile = File(...)):
             if ai_response.endswith("```"):
                 ai_response = ai_response[:-3]
 
-            return json.loads(ai_response.strip())
+            raw = json.loads(ai_response.strip())
+            return parse_model_findings(raw)
 
         except Exception as e:
             print(f"Model {model_name} failed: {str(e)}")
