@@ -16,7 +16,6 @@ import {
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
 import MicIcon from "@mui/icons-material/Mic";
 import StopIcon from "@mui/icons-material/Stop";
@@ -67,7 +66,7 @@ interface CombinedPanelProps {
   isGeneratingReport: boolean;
   reportText: string;
   onReportChange: (text: string) => void;
-  onAddFinding: (text: string) => void;
+  onAddFinding: (text: string, isAbnormal: boolean) => void;
 }
 
 const STATUS_CONFIG: Record<
@@ -140,36 +139,42 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
   onFindingSelect,
   onRemoveFinding,
   onToggleAllBoxes,
-  onGenerateReport,
   isGeneratingReport,
   reportText,
   onReportChange,
   onAddFinding,
 }) => {
-  const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [speechError, setSpeechError] = useState("");
-  const [showDestinationModal, setShowDestinationModal] = useState(false);
+  const [findingListening, setFindingListening] = useState(false);
+  const [findingTranscript, setFindingTranscript] = useState("");
+  const [findingSpeechError, setFindingSpeechError] = useState("");
+  const [showFindingConfirm, setShowFindingConfirm] = useState(false);
+  const [editedFindingText, setEditedFindingText] = useState("");
 
-  const recognitionRef = useRef<ISpeechRecognition | null>(null);
+  const [impressionListening, setImpressionListening] = useState(false);
+  const [impressionTranscript, setImpressionTranscript] = useState("");
+  const [impressionSpeechError, setImpressionSpeechError] = useState("");
+  const [showImpressionConfirm, setShowImpressionConfirm] = useState(false);
+  const [editedImpressionText, setEditedImpressionText] = useState("");
+
+  const findingRecognitionRef = useRef<ISpeechRecognition | null>(null);
+  const impressionRecognitionRef = useRef<ISpeechRecognition | null>(null);
 
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
+      if (findingRecognitionRef.current) findingRecognitionRef.current.stop();
+      if (impressionRecognitionRef.current)
+        impressionRecognitionRef.current.stop();
     };
   }, []);
 
-  const startListening = () => {
-    setSpeechError("");
-    setTranscript("");
+  const startFindingListening = () => {
+    setFindingSpeechError("");
+    setFindingTranscript("");
 
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-
     if (!SpeechRecognition) {
-      setSpeechError(
+      setFindingSpeechError(
         "Speech recognition is not supported in this browser. Please use Chrome or Edge.",
       );
       return;
@@ -181,63 +186,121 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
     recognition.lang = "en-US";
 
     recognition.onresult = (event: ISpeechRecognitionEvent) => {
-      let fullTranscript = "";
+      let full = "";
       for (let i = 0; i < event.results.length; i++) {
-        fullTranscript += event.results[i][0].transcript;
+        full += event.results[i][0].transcript;
       }
-      setTranscript(fullTranscript);
+      setFindingTranscript(full);
     };
 
     recognition.onerror = (event: ISpeechRecognitionErrorEvent) => {
-      setSpeechError(`Microphone error: ${event.error}`);
-      setIsListening(false);
+      setFindingSpeechError(`Microphone error: ${event.error}`);
+      setFindingListening(false);
     };
 
     recognition.onend = () => {
-      setIsListening(false);
+      setFindingListening(false);
     };
 
-    recognitionRef.current = recognition;
+    findingRecognitionRef.current = recognition;
     recognition.start();
-    setIsListening(true);
+    setFindingListening(true);
   };
 
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    setIsListening(false);
-    if (transcript.trim()) {
-      setShowDestinationModal(true);
+  const stopFindingListening = () => {
+    if (findingRecognitionRef.current) findingRecognitionRef.current.stop();
+    setFindingListening(false);
+    if (findingTranscript.trim()) {
+      setEditedFindingText(findingTranscript.trim());
+      setShowFindingConfirm(true);
     }
   };
 
-  const handleSendToFinding = () => {
-    if (transcript.trim()) {
-      onAddFinding(transcript.trim());
+  const handleConfirmFinding = (isAbnormal: boolean) => {
+    if (editedFindingText.trim()) {
+      onAddFinding(editedFindingText.trim(), isAbnormal);
     }
-    setShowDestinationModal(false);
-    setTranscript("");
+    setShowFindingConfirm(false);
+    setFindingTranscript("");
+    setEditedFindingText("");
   };
 
-  const handleSendToImpression = () => {
-    if (transcript.trim()) {
+  const handleCancelFinding = () => {
+    setShowFindingConfirm(false);
+    setFindingTranscript("");
+    setEditedFindingText("");
+  };
+
+  const startImpressionListening = () => {
+    setImpressionSpeechError("");
+    setImpressionTranscript("");
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setImpressionSpeechError(
+        "Speech recognition is not supported in this browser. Please use Chrome or Edge.",
+      );
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event: ISpeechRecognitionEvent) => {
+      let full = "";
+      for (let i = 0; i < event.results.length; i++) {
+        full += event.results[i][0].transcript;
+      }
+      setImpressionTranscript(full);
+    };
+
+    recognition.onerror = (event: ISpeechRecognitionErrorEvent) => {
+      setImpressionSpeechError(`Microphone error: ${event.error}`);
+      setImpressionListening(false);
+    };
+
+    recognition.onend = () => {
+      setImpressionListening(false);
+    };
+
+    impressionRecognitionRef.current = recognition;
+    recognition.start();
+    setImpressionListening(true);
+  };
+
+  const stopImpressionListening = () => {
+    if (impressionRecognitionRef.current)
+      impressionRecognitionRef.current.stop();
+    setImpressionListening(false);
+    if (impressionTranscript.trim()) {
+      setEditedImpressionText(impressionTranscript.trim());
+      setShowImpressionConfirm(true);
+    }
+  };
+
+  const handleConfirmImpression = () => {
+    if (editedImpressionText.trim()) {
       const currentFindings = findings.map((f) => f.text).join(". ");
       const currentImpression = parseImpression(reportText);
       const newImpression = currentImpression
-        ? `${currentImpression} ${transcript.trim()}`
-        : transcript.trim();
+        ? `${currentImpression} ${editedImpressionText.trim()}`
+        : editedImpressionText.trim();
       onReportChange(
         `Findings:\n${currentFindings}\n\nImpression:\n${newImpression}`,
       );
     }
-    setShowDestinationModal(false);
-    setTranscript("");
+    setShowImpressionConfirm(false);
+    setImpressionTranscript("");
+    setEditedImpressionText("");
   };
 
-  const handleCancelModal = () => {
-    setShowDestinationModal(false);
-    setTranscript("");
+  const handleCancelImpression = () => {
+    setShowImpressionConfirm(false);
+    setImpressionTranscript("");
+    setEditedImpressionText("");
   };
 
   const parseImpression = (text: string): string => {
@@ -400,7 +463,6 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                         flexShrink: 0,
                       }}
                     />
-
                     <Typography
                       sx={{
                         fontSize: "0.82rem",
@@ -411,7 +473,6 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                     >
                       {item.text}
                     </Typography>
-
                     <Box
                       sx={{
                         display: "flex",
@@ -422,7 +483,6 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <StatusPill status={status} />
-                      {!item.boundingBox}
                       <IconButton
                         size="small"
                         onClick={() => onRemoveFinding(item.id)}
@@ -445,42 +505,32 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           </Stack>
         </Box>
 
-        <Box sx={{ px: 1.25, pb: 1.25, display: "flex", gap: 0.75 }}>
+        <Box sx={{ px: 1.25, pb: 1.25 }}>
           <Button
             variant="outlined"
             size="small"
-            startIcon={<AddIcon sx={{ fontSize: 14 }} />}
-            disabled={findings.length === 0}
-            sx={{
-              flex: 1,
-              fontSize: "0.75rem",
-              borderColor: "rgba(255,255,255,0.15)",
-              color: "#78909c",
-              "&:hover": {
-                borderColor: "rgba(255,255,255,0.3)",
-                bgcolor: "rgba(255,255,255,0.04)",
-              },
-            }}
-          >
-            Add Finding
-          </Button>
-
-          <IconButton
-            size="small"
-            onClick={isListening ? stopListening : startListening}
-            title={
-              isListening ? "Stop recording" : "Dictate a finding or impression"
+            onClick={
+              findingListening ? stopFindingListening : startFindingListening
             }
+            startIcon={
+              findingListening ? (
+                <StopIcon sx={{ fontSize: 14 }} />
+              ) : (
+                <MicIcon sx={{ fontSize: 14 }} />
+              )
+            }
+            disabled={findings.length === 0}
+            fullWidth
             sx={{
-              border: "1px solid",
-              borderColor: isListening
+              fontSize: "0.75rem",
+              borderColor: findingListening
                 ? "rgba(239, 83, 80, 0.6)"
                 : "rgba(255,255,255,0.15)",
-              borderRadius: "6px",
-              px: 1,
-              color: isListening ? "#ef5350" : "#78909c",
-              bgcolor: isListening ? "rgba(239, 83, 80, 0.1)" : "transparent",
-              animation: isListening
+              color: findingListening ? "#ef5350" : "#78909c",
+              bgcolor: findingListening
+                ? "rgba(239, 83, 80, 0.08)"
+                : "transparent",
+              animation: findingListening
                 ? "pulse 1.4s ease-in-out infinite"
                 : "none",
               "@keyframes pulse": {
@@ -489,79 +539,73 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                 "100%": { boxShadow: "0 0 0 0 rgba(239, 83, 80, 0)" },
               },
               "&:hover": {
-                borderColor: isListening
+                borderColor: findingListening
                   ? "rgba(239, 83, 80, 0.9)"
                   : "rgba(255,255,255,0.3)",
-                bgcolor: isListening
-                  ? "rgba(239, 83, 80, 0.18)"
+                bgcolor: findingListening
+                  ? "rgba(239, 83, 80, 0.15)"
                   : "rgba(255,255,255,0.04)",
               },
             }}
           >
-            {isListening ? (
-              <StopIcon sx={{ fontSize: 16 }} />
-            ) : (
-              <MicIcon sx={{ fontSize: 16 }} />
-            )}
-          </IconButton>
+            {findingListening ? "Stop Recording" : "Add Finding"}
+          </Button>
+
+          {findingListening && (
+            <Box
+              sx={{
+                mt: 0.75,
+                px: 1.25,
+                py: 0.75,
+                bgcolor: "rgba(239, 83, 80, 0.06)",
+                border: "1px solid rgba(239, 83, 80, 0.25)",
+                borderRadius: "6px",
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: "0.72rem",
+                  color: "#ef5350",
+                  fontWeight: 700,
+                  mb: 0.4,
+                }}
+              >
+                ● RECORDING
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: "0.8rem",
+                  color: findingTranscript ? "#cfd8dc" : "#546e7a",
+                  fontStyle: findingTranscript ? "normal" : "italic",
+                  lineHeight: 1.4,
+                }}
+              >
+                {findingTranscript || "Start speaking…"}
+              </Typography>
+            </Box>
+          )}
+
+          {findingSpeechError && (
+            <Box
+              sx={{
+                mt: 0.75,
+                px: 1.25,
+                py: 0.75,
+                bgcolor: "rgba(239, 83, 80, 0.08)",
+                border: "1px solid rgba(239, 83, 80, 0.3)",
+                borderRadius: "6px",
+              }}
+            >
+              <Typography sx={{ fontSize: "0.78rem", color: "#ef9a9a" }}>
+                {findingSpeechError}
+              </Typography>
+            </Box>
+          )}
         </Box>
-
-        {isListening && (
-          <Box
-            sx={{
-              mx: 1.25,
-              mb: 1,
-              px: 1.25,
-              py: 1,
-              bgcolor: "rgba(239, 83, 80, 0.06)",
-              border: "1px solid rgba(239, 83, 80, 0.25)",
-              borderRadius: "6px",
-            }}
-          >
-            <Typography
-              sx={{
-                fontSize: "0.72rem",
-                color: "#ef5350",
-                fontWeight: 700,
-                mb: 0.5,
-              }}
-            >
-              ● RECORDING
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: "0.8rem",
-                color: transcript ? "#cfd8dc" : "#546e7a",
-                fontStyle: transcript ? "normal" : "italic",
-                lineHeight: 1.4,
-              }}
-            >
-              {transcript || "Start speaking…"}
-            </Typography>
-          </Box>
-        )}
-
-        {speechError && (
-          <Box
-            sx={{
-              mx: 1.25,
-              mb: 1,
-              px: 1.25,
-              py: 0.75,
-              bgcolor: "rgba(239, 83, 80, 0.08)",
-              border: "1px solid rgba(239, 83, 80, 0.3)",
-              borderRadius: "6px",
-            }}
-          >
-            <Typography sx={{ fontSize: "0.78rem", color: "#ef9a9a" }}>
-              {speechError}
-            </Typography>
-          </Box>
-        )}
 
         <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />
 
-        <Box sx={{ px: 1.5, pt: 1.25, pb: 0.75 }}>
+        <Box sx={{ px: 1.5, pt: 1.25, pb: 1.25 }}>
           <Typography
             sx={{
               fontSize: "0.72rem",
@@ -575,22 +619,56 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
             Impression
           </Typography>
 
-          <Button
-            variant="contained"
-            size="small"
-            onClick={onGenerateReport}
-            disabled={findings.length === 0 || isGeneratingReport}
-            fullWidth
-            sx={{
-              fontSize: "0.75rem",
-              mb: 1,
-              bgcolor: "#1565c0",
-              "&:hover": { bgcolor: "#1976d2" },
-              "&.Mui-disabled": { bgcolor: "#1a2530", color: "#37474f" },
-            }}
-          >
-            {isGeneratingReport ? "Generating..." : "Create Report"}
-          </Button>
+          {impressionListening && (
+            <Box
+              sx={{
+                mb: 1,
+                px: 1.25,
+                py: 0.75,
+                bgcolor: "rgba(239, 83, 80, 0.06)",
+                border: "1px solid rgba(239, 83, 80, 0.25)",
+                borderRadius: "6px",
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: "0.72rem",
+                  color: "#ef5350",
+                  fontWeight: 700,
+                  mb: 0.4,
+                }}
+              >
+                ● RECORDING
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: "0.8rem",
+                  color: impressionTranscript ? "#cfd8dc" : "#546e7a",
+                  fontStyle: impressionTranscript ? "normal" : "italic",
+                  lineHeight: 1.4,
+                }}
+              >
+                {impressionTranscript || "Start speaking…"}
+              </Typography>
+            </Box>
+          )}
+
+          {impressionSpeechError && (
+            <Box
+              sx={{
+                mb: 1,
+                px: 1.25,
+                py: 0.75,
+                bgcolor: "rgba(239, 83, 80, 0.08)",
+                border: "1px solid rgba(239, 83, 80, 0.3)",
+                borderRadius: "6px",
+              }}
+            >
+              <Typography sx={{ fontSize: "0.78rem", color: "#ef9a9a" }}>
+                {impressionSpeechError}
+              </Typography>
+            </Box>
+          )}
 
           {reportText ? (
             <TextField
@@ -603,7 +681,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                   `Findings:\n${currentFindings}\n\nImpression:\n${e.target.value}`,
                 );
               }}
-              placeholder="Impression will appear here after generating the report..."
+              placeholder="Impression will appear here after dictating..."
               variant="outlined"
               minRows={3}
               sx={{
@@ -627,7 +705,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                 textAlign: "center",
               }}
             >
-              Click "Create Report" to generate an impression
+              Dictate an impression using the button below
             </Typography>
           )}
         </Box>
@@ -660,25 +738,48 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
         >
           Save Draft
         </Button>
+
         <Button
           variant="contained"
           size="small"
-          disabled={!reportText}
+          onClick={
+            impressionListening
+              ? stopImpressionListening
+              : startImpressionListening
+          }
+          disabled={findings.length === 0 || isGeneratingReport}
+          startIcon={
+            impressionListening ? (
+              <StopIcon sx={{ fontSize: 14 }} />
+            ) : (
+              <MicIcon sx={{ fontSize: 14 }} />
+            )
+          }
           sx={{
             flex: 1,
             fontSize: "0.75rem",
-            bgcolor: "#1565c0",
-            "&:hover": { bgcolor: "#1976d2" },
+            bgcolor: impressionListening ? "rgba(239, 83, 80, 0.85)" : "#1565c0",
+            animation: impressionListening
+              ? "pulse 1.4s ease-in-out infinite"
+              : "none",
+            "@keyframes pulse": {
+              "0%": { boxShadow: "0 0 0 0 rgba(239, 83, 80, 0.4)" },
+              "70%": { boxShadow: "0 0 0 6px rgba(239, 83, 80, 0)" },
+              "100%": { boxShadow: "0 0 0 0 rgba(239, 83, 80, 0)" },
+            },
+            "&:hover": {
+              bgcolor: impressionListening ? "#ef5350" : "#1976d2",
+            },
             "&.Mui-disabled": { bgcolor: "#1a2530", color: "#37474f" },
           }}
         >
-          Submit Report
+          {impressionListening ? "Stop" : "Add Impression"}
         </Button>
       </Box>
 
       <Dialog
-        open={showDestinationModal}
-        onClose={handleCancelModal}
+        open={showFindingConfirm}
+        onClose={handleCancelFinding}
         PaperProps={{
           sx: {
             bgcolor: "#1e2730",
@@ -701,87 +802,184 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           }}
         >
           <MicIcon sx={{ fontSize: 18, color: "#78909c" }} />
-          Where should this go?
+          Confirm Finding
         </DialogTitle>
 
         <DialogContent sx={{ pt: 1 }}>
-          <Box
+          <Typography
             sx={{
-              bgcolor: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "6px",
-              px: 1.5,
-              py: 1,
-              mb: 2,
+              fontSize: "0.72rem",
+              color: "#78909c",
+              fontWeight: 700,
+              mb: 0.75,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
             }}
           >
-            <Typography
-              sx={{
-                fontSize: "0.8rem",
-                color: "#90a4ae",
-                mb: 0.25,
-                fontWeight: 600,
-              }}
-            >
-              Transcribed text
-            </Typography>
-            <Typography
-              sx={{ fontSize: "0.88rem", color: "#cfd8dc", lineHeight: 1.5 }}
-            >
-              "{transcript}"
-            </Typography>
-          </Box>
+            Edit if needed
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            value={editedFindingText}
+            onChange={(e) => setEditedFindingText(e.target.value)}
+            variant="outlined"
+            sx={{
+              mb: 2,
+              "& .MuiOutlinedInput-root": {
+                color: "#eceff1",
+                fontSize: "0.88rem",
+                lineHeight: 1.5,
+                "& fieldset": { borderColor: "rgba(255,255,255,0.15)" },
+                "&:hover fieldset": { borderColor: "rgba(255,255,255,0.3)" },
+                "&.Mui-focused fieldset": { borderColor: "#1976d2" },
+              },
+            }}
+          />
 
-          <Stack spacing={1}>
+          <Typography
+            sx={{
+              fontSize: "0.72rem",
+              color: "#78909c",
+              fontWeight: 700,
+              mb: 0.75,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+            }}
+          >
+            Classify as
+          </Typography>
+          <Stack direction="row" spacing={1}>
             <Button
               variant="outlined"
               fullWidth
-              onClick={handleSendToFinding}
-              startIcon={<AddIcon />}
+              onClick={() => handleConfirmFinding(true)}
               sx={{
-                justifyContent: "flex-start",
+                borderColor: "rgba(239, 83, 80, 0.5)",
+                color: "#ef5350",
+                fontSize: "0.82rem",
+                py: 1,
+                "&:hover": {
+                  borderColor: "#ef5350",
+                  bgcolor: "rgba(239, 83, 80, 0.1)",
+                },
+              }}
+            >
+              Abnormal
+            </Button>
+            <Button
+              variant="outlined"
+              fullWidth
+              onClick={() => handleConfirmFinding(false)}
+              sx={{
                 borderColor: "rgba(144, 164, 174, 0.4)",
                 color: "#90a4ae",
                 fontSize: "0.82rem",
                 py: 1,
                 "&:hover": {
                   borderColor: "#90a4ae",
-                  bgcolor: "rgba(144, 164, 174, 0.08)",
+                  bgcolor: "rgba(144, 164, 174, 0.1)",
                 },
               }}
             >
-              Add as a new Finding
-            </Button>
-
-            <Button
-              variant="outlined"
-              fullWidth
-              onClick={handleSendToImpression}
-              startIcon={<MicIcon />}
-              sx={{
-                justifyContent: "flex-start",
-                borderColor: "rgba(25, 118, 210, 0.5)",
-                color: "#64b5f6",
-                fontSize: "0.82rem",
-                py: 1,
-                "&:hover": {
-                  borderColor: "#1976d2",
-                  bgcolor: "rgba(25, 118, 210, 0.08)",
-                },
-              }}
-            >
-              Append to Impression
+              Normal
             </Button>
           </Stack>
         </DialogContent>
 
         <DialogActions sx={{ px: 2, pb: 2, pt: 0.5 }}>
           <Button
-            onClick={handleCancelModal}
+            onClick={handleCancelFinding}
             size="small"
             sx={{ color: "#546e7a", fontSize: "0.78rem" }}
           >
             Discard
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={showImpressionConfirm}
+        onClose={handleCancelImpression}
+        PaperProps={{
+          sx: {
+            bgcolor: "#1e2730",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "10px",
+            minWidth: 340,
+            maxWidth: 420,
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            color: "#eceff1",
+            fontSize: "0.92rem",
+            fontWeight: 700,
+            pb: 0.5,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+          }}
+        >
+          <MicIcon sx={{ fontSize: 18, color: "#78909c" }} />
+          Confirm Impression
+        </DialogTitle>
+
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography
+            sx={{
+              fontSize: "0.72rem",
+              color: "#78909c",
+              fontWeight: 700,
+              mb: 0.75,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+            }}
+          >
+            Edit if needed
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={3}
+            value={editedImpressionText}
+            onChange={(e) => setEditedImpressionText(e.target.value)}
+            variant="outlined"
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                color: "#eceff1",
+                fontSize: "0.88rem",
+                lineHeight: 1.5,
+                "& fieldset": { borderColor: "rgba(255,255,255,0.15)" },
+                "&:hover fieldset": { borderColor: "rgba(255,255,255,0.3)" },
+                "&.Mui-focused fieldset": { borderColor: "#1976d2" },
+              },
+            }}
+          />
+        </DialogContent>
+
+        <DialogActions sx={{ px: 2, pb: 2, pt: 1, gap: 0.5 }}>
+          <Button
+            onClick={handleCancelImpression}
+            size="small"
+            sx={{ color: "#546e7a", fontSize: "0.78rem" }}
+          >
+            Discard
+          </Button>
+          <Button
+            onClick={handleConfirmImpression}
+            variant="contained"
+            size="small"
+            disabled={!editedImpressionText.trim()}
+            sx={{
+              bgcolor: "#1565c0",
+              fontSize: "0.78rem",
+              "&:hover": { bgcolor: "#1976d2" },
+            }}
+          >
+            Add to Impression
           </Button>
         </DialogActions>
       </Dialog>

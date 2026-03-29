@@ -13,9 +13,10 @@ import AccountCircle from "@mui/icons-material/AccountCircle";
 
 interface HeaderProps {
   doctorName?: string;
+  onMenuClick?: () => void;
 }
 
-function Header({ doctorName }: HeaderProps) {
+function Header({ doctorName, onMenuClick }: HeaderProps) {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) =>
@@ -37,8 +38,9 @@ function Header({ doctorName }: HeaderProps) {
             size="medium"
             edge="start"
             color="inherit"
-            aria-label="menu"
+            aria-label="open sessions drawer"
             sx={{ mr: 2 }}
+            onClick={onMenuClick}
           >
             <MenuIcon />
           </IconButton>
