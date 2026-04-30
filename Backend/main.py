@@ -3,12 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import httpx
 from openai import OpenAI
 from dotenv import load_dotenv
 import base64
 import json
 import time
-
 
 load_dotenv()
 
@@ -16,6 +16,7 @@ app = FastAPI()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
+HPC_MODEL_URL = os.getenv("HPC_MODEL_URL", "http://localhost:8001")
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,7 +26,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-USE_MOCK_DATA = True
+USE_MOCK_DATA = False
+USE_HPC_MODEL = True
+
 
 class BoundingBox(BaseModel):
     x: float
@@ -41,48 +44,6 @@ class Finding(BaseModel):
     status: Optional[str] = "same"
 
 
-def parse_model_findings(raw_findings: list) -> list:
-    parsed = []
-    for i, item in enumerate(raw_findings):
-        if isinstance(item, (list, tuple)) and len(item) == 2:
-            text, bbox_raw = item
-        elif isinstance(item, dict):
-            text = item.get("text", "")
-            bbox_raw = item.get("boundingBox", None)
-        else:
-            continue
-
-        bounding_box = None
-        if bbox_raw is not None:
-            if isinstance(bbox_raw, (list, tuple)) and len(bbox_raw) == 4:
-                x_min, y_min, x_max, y_max = bbox_raw
-                bounding_box = {
-                    "x": x_min * 1000,
-                    "y": y_min * 1000,
-                    "width": (x_max - x_min) * 1000,
-                    "height": (y_max - y_min) * 1000,
-                }
-            elif isinstance(bbox_raw, dict):
-                bounding_box = bbox_raw
-
-        critical_keywords = [
-            "effusion", "pneumothorax", "opacity", "consolidation",
-            "mass", "nodule", "fracture", "tamponade", "edema"
-        ]
-        is_critical = any(kw in text.lower() for kw in critical_keywords)
-        status = "worsened" if is_critical else "same"
-
-        parsed.append({
-            "id": str(i + 1),
-            "text": text,
-            "isCritical": is_critical,
-            "status": status,
-            "boundingBox": bounding_box,
-        })
-
-    return parsed
-
-
 @app.get("/")
 def read_root():
     return {
@@ -90,9 +51,21 @@ def read_root():
         "endpoints": {
             "test_openai": "/api/test-openai",
             "analyze_xray": "/api/analyze-xray",
-            "generate_report": "/api/generate-report"
+            "generate_report": "/api/generate-report",
+            "hpc_health": "/api/hpc-health",
         }
     }
+
+
+@app.get("/api/hpc-health")
+async def hpc_health():
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as hpc:
+            response = await hpc.get(f"{HPC_MODEL_URL}/health")
+            return {"status": "reachable", "hpc_response": response.json()}
+    except Exception as e:
+        return {"status": "unreachable", "error": str(e)}
+
 
 @app.get("/api/test-openai")
 def test_openai():
@@ -106,113 +79,106 @@ def test_openai():
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+
 @app.post("/api/analyze-xray")
 async def analyze_xray(file: UploadFile = File(...)):
-
     if USE_MOCK_DATA:
         time.sleep(1)
-
-        raw_model_output = [
-            ("There is a large right pleural effusion.", [0.055, 0.275, 0.445, 0.665]),
-            ("The left lung is clear.", None),
-            ("No pneumothorax is identified.", None),
-            ("The cardiomediastinal silhouette is within normal limits.", None),
-            ("The visualized osseous structures are unremarkable.", None),
+        mock_findings = [
+            {
+                "id": "1",
+                "text": "Large left pleural effusion",
+                "isCritical": True,
+                "status": "worsened",
+                "boundingBox": {"x": 100, "y": 500, "width": 300, "height": 400}
+            },
+            {
+                "id": "2",
+                "text": "Small right pleural effusion",
+                "isCritical": False,
+                "status": "changed",
+                "boundingBox": {"x": 600, "y": 550, "width": 250, "height": 350}
+            },
+            {
+                "id": "3",
+                "text": "Cardiomegaly (enlarged heart)",
+                "isCritical": False,
+                "status": "same",
+                "boundingBox": {"x": 350, "y": 400, "width": 300, "height": 350}
+            },
         ]
-
-        findings = parse_model_findings(raw_model_output)
-
-        for f in findings:
-            has_box = "with box" if f["boundingBox"] else "no box"
-            print(f"  [{'CRITICAL' if f['isCritical'] else 'normal'}] {f['text']} ({has_box})")
-
-        return findings
+        return mock_findings
 
     image_bytes = await file.read()
-    base64_image = base64.b64encode(image_bytes).decode('utf-8')
 
+    if USE_HPC_MODEL:
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as hpc:
+                response = await hpc.post(
+                    f"{HPC_MODEL_URL}/analyze",
+                    files={"file": (file.filename, image_bytes, file.content_type)},
+                )
+                data = response.json()
+                return data["findings"]
+        except httpx.ConnectError:
+            return {"error": "Cannot reach HPC model server. Check your SSH tunnel is running."}
+        except Exception as e:
+            return {"error": f"HPC model error: {str(e)}"}
+
+    base64_image = base64.b64encode(image_bytes).decode("utf-8")
     analysis_prompt = """
     You are an expert radiologist analyzing a chest X-ray image.
 
-    Return a JSON array of findings. Each finding must have:
-    - "text": a string describing the observation
-    - "boundingBox": an object with x, y, width, height in a 1000x1000 coordinate system,
-      or null if the finding has no specific localizable region
-
-    Example:
-    [
-      {"text": "Large left pleural effusion", "boundingBox": {"x": 100, "y": 500, "width": 300, "height": 400}},
-      {"text": "No pneumothorax identified", "boundingBox": null}
-    ]
+    Identify all visible abnormalities and return a JSON array. Each finding must include:
+    - id (string number)
+    - text (description)
+    - isCritical (boolean)
+    - status: one of "worsened", "changed", or "same"
+    - boundingBox with x, y, width, height (coordinate system: 1000x1000)
 
     Return ONLY the JSON array, no markdown or extra text.
     """
 
-    models_to_try = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": analysis_prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}
+                    ]
+                }
+            ],
+            max_tokens=1000,
+            temperature=0.3,
+        )
+        ai_response = response.choices[0].message.content.strip()
+        ai_response = ai_response.removeprefix("```json").removeprefix("```").removesuffix("```")
+        return json.loads(ai_response.strip())
+    except Exception as e:
+        return {"error": str(e)}
 
-    for model_name in models_to_try:
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": analysis_prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                        ]
-                    }
-                ],
-                max_tokens=1000,
-                temperature=0.3
-            )
-
-            ai_response = response.choices[0].message.content
-            if ai_response is None:
-                raise ValueError("Empty response from API")
-            
-            ai_response = ai_response.strip()
-            if ai_response.startswith("```json"):
-                ai_response = ai_response[7:]
-            if ai_response.startswith("```"):
-                ai_response = ai_response[3:]
-            if ai_response.endswith("```"):
-                ai_response = ai_response[:-3]
-
-            raw = json.loads(ai_response.strip())
-            return parse_model_findings(raw)
-
-        except Exception as e:
-            print(f"Model {model_name} failed: {str(e)}")
-            if model_name == models_to_try[-1]:
-                return {"error": f"All models failed. Last error: {str(e)}"}
-            continue
 
 @app.post("/api/generate-report")
 async def generate_report(findings: List[Finding]):
-    print(f"Generating report for {len(findings)} findings")
-
     if USE_MOCK_DATA:
         time.sleep(1)
-
         finding_texts = [f.text for f in findings]
         critical_findings = [f for f in findings if f.isCritical]
-
         if critical_findings:
             impression = ". ".join([f.text for f in critical_findings]) + "."
         else:
             impression = ("No acute findings. " + findings[0].text) if findings else "No significant abnormalities detected."
-
         report = f"""Findings:
 {". ".join(finding_texts)}. The cardiac silhouette size is within normal limits. The mediastinal contour is unremarkable. No pneumothorax is identified. Osseous structures show age-appropriate changes.
 
 Impression:
 {impression}"""
-
         return {"report": report}
 
     findings_context = ", ".join([f.text for f in findings])
-
     system_prompt = """You are an expert radiologist. Generate a formal, concise narrative medical report.
 
 The report must include:
@@ -228,7 +194,6 @@ Findings:
 Impression:
 [key diagnoses here]
 """
-
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -237,10 +202,8 @@ Impression:
                 {"role": "user", "content": f"Generate a radiology report for these findings: {findings_context}"}
             ],
             temperature=0.7,
-            max_tokens=500
+            max_tokens=500,
         )
         return {"report": response.choices[0].message.content}
-
     except Exception as e:
-        print(f"Error generating report: {str(e)}")
         return {"error": str(e)}

@@ -154,7 +154,7 @@ Note: Chest X-ray may be normal in primary TB; a normal film does not exclude th
       {
         id: "3",
         text: "Left mid zone nodule — suspected metastasis",
-        isCritical: true,
+        isCritical: false,
         status: "worsened",
         boundingBox: { x: 800, y: 620, width: 90, height: 90 },
       },
