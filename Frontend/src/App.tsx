@@ -95,8 +95,7 @@ Impression:
       name: "Patient B",
       age: 28,
       gender: "M",
-      indication:
-        "28M with 3-week history of productive cough, night sweats and weight loss",
+      indication: "28M with 3-week history of productive cough, night sweats and weight loss",
     },
     findings: [
       {
@@ -133,8 +132,7 @@ Note: Chest X-ray may be normal in primary TB; a normal film does not exclude th
       name: "Patient C",
       age: 61,
       gender: "M",
-      indication:
-        "61M with haemoptysis and 6-week history of progressive breathlessness",
+      indication: "61M with haemoptysis and 6-week history of progressive breathlessness",
     },
     findings: [
       {
@@ -182,21 +180,16 @@ const darkTheme = createTheme({ palette: { mode: "dark" } });
 function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sessions, setSessions] = useState<XRaySession[]>(PRESET_SESSIONS);
-  const [activeSessionId, setActiveSessionId] = useState<string>(
-    PRESET_SESSIONS[0].id,
-  );
+  const [activeSessionId, setActiveSessionId] = useState<string>(PRESET_SESSIONS[0].id);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(
     PRESET_SESSIONS[0].findings[0]?.id ?? null,
   );
-  const [hiddenFindingIds, setHiddenFindingIds] = useState<Set<string>>(
-    new Set(),
-  );
+  const [hiddenFindingIds, setHiddenFindingIds] = useState<Set<string>>(new Set());
   const [allBoxesHidden, setAllBoxesHidden] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-  const activeSession =
-    sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
 
   const updateActiveSession = useCallback(
     (patch: Partial<Omit<XRaySession, "id">>) => {
@@ -264,9 +257,7 @@ function App() {
     const imagePreviewUrl = URL.createObjectURL(file);
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === sessionId
-          ? { ...s, imageUrl: imagePreviewUrl, findings: [], report: "" }
-          : s,
+        s.id === sessionId ? { ...s, imageUrl: imagePreviewUrl, findings: [], report: "" } : s,
       ),
     );
 
@@ -341,14 +332,11 @@ function App() {
     }
     setIsGeneratingReport(true);
     try {
-      const response = await fetch(
-        "http://localhost:8000/api/generate-report",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(findings),
-        },
-      );
+      const response = await fetch("http://localhost:8000/api/generate-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(findings),
+      });
       const data = await response.json();
       if (data.report) {
         updateActiveSession({ report: data.report });
@@ -454,9 +442,7 @@ function App() {
           </Button>
         </Box>
 
-        <Divider
-          sx={{ borderColor: "rgba(255,255,255,0.06)", flexShrink: 0 }}
-        />
+        <Divider sx={{ borderColor: "rgba(255,255,255,0.06)", flexShrink: 0 }} />
 
         <Box sx={{ flex: 1, overflowY: "auto", py: 0.75 }}>
           <Typography
@@ -486,9 +472,7 @@ function App() {
 
           {uploadedList.length > 0 && (
             <>
-              <Divider
-                sx={{ borderColor: "rgba(255,255,255,0.06)", my: 0.75 }}
-              />
+              <Divider sx={{ borderColor: "rgba(255,255,255,0.06)", my: 0.75 }} />
               <Typography
                 sx={{
                   px: 2,
@@ -559,7 +543,6 @@ function App() {
               <XRayViewer
                 imageUrl={imageUrl}
                 findings={findings}
-                selectedFindingId={selectedFindingId}
                 hiddenFindingIds={hiddenFindingIds}
                 allBoxesHidden={allBoxesHidden}
                 onFindingClick={handleFindingSelect}
@@ -581,7 +564,6 @@ function App() {
             <CombinedPanel
               findings={findings}
               selectedFindingId={selectedFindingId}
-              hiddenFindingIds={hiddenFindingIds}
               allBoxesHidden={allBoxesHidden}
               onFindingSelect={handleFindingSelect}
               onRemoveFinding={handleRemoveFinding}
@@ -606,12 +588,7 @@ interface SessionRowProps {
   onDelete: (() => void) | null;
 }
 
-function SessionRow({
-  session,
-  isActive,
-  onSelect,
-  onDelete,
-}: SessionRowProps) {
+function SessionRow({ session, isActive, onSelect, onDelete }: SessionRowProps) {
   const findingCount = session.findings.length;
   const timeLabel = session.createdAt.toLocaleTimeString([], {
     hour: "2-digit",
@@ -641,9 +618,7 @@ function SessionRow({
         alignItems: "center",
         gap: 1.25,
         "&:hover": {
-          bgcolor: isActive
-            ? "rgba(25,118,210,0.18)"
-            : "rgba(255,255,255,0.04)",
+          bgcolor: isActive ? "rgba(25,118,210,0.18)" : "rgba(255,255,255,0.04)",
           border: isActive
             ? "1px solid rgba(25,118,210,0.5)"
             : "1px solid rgba(255,255,255,0.06)",

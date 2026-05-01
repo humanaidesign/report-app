@@ -39,7 +39,7 @@ class BoundingBox(BaseModel):
 class Finding(BaseModel):
     id: str
     text: str
-    isCritical: bool
+    isCritical: bool = False
     boundingBox: Optional[BoundingBox] = None
     status: Optional[str] = "same"
 
@@ -163,21 +163,6 @@ async def analyze_xray(file: UploadFile = File(...)):
 
 @app.post("/api/generate-report")
 async def generate_report(findings: List[Finding]):
-    if USE_MOCK_DATA:
-        time.sleep(1)
-        finding_texts = [f.text for f in findings]
-        critical_findings = [f for f in findings if f.isCritical]
-        if critical_findings:
-            impression = ". ".join([f.text for f in critical_findings]) + "."
-        else:
-            impression = ("No acute findings. " + findings[0].text) if findings else "No significant abnormalities detected."
-        report = f"""Findings:
-{". ".join(finding_texts)}. The cardiac silhouette size is within normal limits. The mediastinal contour is unremarkable. No pneumothorax is identified. Osseous structures show age-appropriate changes.
-
-Impression:
-{impression}"""
-        return {"report": report}
-
     findings_context = ", ".join([f.text for f in findings])
     system_prompt = """You are an expert radiologist. Generate a formal, concise narrative medical report.
 

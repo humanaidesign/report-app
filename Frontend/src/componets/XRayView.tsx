@@ -18,7 +18,6 @@ import type { Finding } from "../types";
 interface XRayViewerProps {
   imageUrl: string;
   findings: Finding[];
-  selectedFindingId: string | null;
   hiddenFindingIds: Set<string>;
   allBoxesHidden: boolean;
   onFindingClick: (id: string) => void;
@@ -29,7 +28,6 @@ interface XRayViewerProps {
 const XRayViewer: React.FC<XRayViewerProps> = ({
   imageUrl,
   findings,
-  selectedFindingId,
   hiddenFindingIds,
   allBoxesHidden,
   onFindingClick,
@@ -223,8 +221,6 @@ const XRayViewer: React.FC<XRayViewerProps> = ({
                     if (hiddenFindingIds.has(finding.id)) return null;
 
                     const { x, y, width, height } = finding.boundingBox;
-                    const isSelected = finding.id === selectedFindingId;
-
                     const toPercent = (v: number) => `${(v / 1000) * 100}%`;
 
                     return (
@@ -237,12 +233,8 @@ const XRayViewer: React.FC<XRayViewerProps> = ({
                           top: toPercent(y),
                           width: toPercent(width),
                           height: toPercent(height),
-                          border: isSelected
-                            ? "3px solid #ff9800"
-                            : "2px solid #d84315",
-                          backgroundColor: isSelected
-                            ? "rgba(255, 152, 0, 0.2)"
-                            : "rgba(216, 67, 21, 0.15)",
+                          border: "2px solid #d84315",
+                          backgroundColor: "rgba(216, 67, 21, 0.15)",
                           borderRadius: "4px",
                           cursor: "pointer",
                           pointerEvents: "auto",
@@ -251,16 +243,11 @@ const XRayViewer: React.FC<XRayViewerProps> = ({
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.backgroundColor =
-                            "rgba(255, 152, 0, 0.25)";
-                          e.currentTarget.style.borderColor = "#ff9800";
+                            "rgba(216, 67, 21, 0.25)";
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = isSelected
-                            ? "rgba(255, 152, 0, 0.2)"
-                            : "rgba(216, 67, 21, 0.15)";
-                          e.currentTarget.style.borderColor = isSelected
-                            ? "#ff9800"
-                            : "#d84315";
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(216, 67, 21, 0.15)";
                         }}
                       />
                     );

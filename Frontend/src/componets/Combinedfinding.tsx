@@ -19,7 +19,7 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import CloseIcon from "@mui/icons-material/Close";
 import MicIcon from "@mui/icons-material/Mic";
 import StopIcon from "@mui/icons-material/Stop";
-import type { Finding, FindingStatus } from "../types";
+import type { Finding } from "../types";
 
 interface ISpeechRecognitionEvent {
   results: {
@@ -57,7 +57,6 @@ declare global {
 interface CombinedPanelProps {
   findings: Finding[];
   selectedFindingId: string | null;
-  hiddenFindingIds: Set<string>;
   allBoxesHidden: boolean;
   onFindingSelect: (id: string) => void;
   onRemoveFinding: (id: string) => void;
@@ -69,32 +68,27 @@ interface CombinedPanelProps {
   onAddFinding: (text: string, isAbnormal: boolean) => void;
 }
 
-const STATUS_CONFIG: Record<
-  "abnormal" | "normal",
-  { color: string; bg: string; border: string; label: string; dot: string }
-> = {
+const STATUS_CONFIG = {
   abnormal: {
     color: "#ef5350",
     bg: "rgba(239, 83, 80, 0.13)",
     border: "rgba(239, 83, 80, 0.45)",
-    label: "Abnormal",
     dot: "#ef5350",
   },
   normal: {
     color: "#90a4ae",
     bg: "rgba(144, 164, 174, 0.1)",
     border: "rgba(144, 164, 174, 0.3)",
-    label: "Normal",
     dot: "#90a4ae",
   },
-};
+} as const;
 
-function getCategory(status: FindingStatus): "abnormal" | "normal" {
-  return status === "worsened" || status === "changed" ? "abnormal" : "normal";
+function getCategory(finding: Finding): "abnormal" | "normal" {
+  return finding.boundingBox ? "abnormal" : "normal";
 }
 
-function StatusPill({ status }: { status: FindingStatus }) {
-  const cat = getCategory(status);
+function StatusPill({ finding }: { finding: Finding }) {
+  const cat = getCategory(finding);
   const cfg = STATUS_CONFIG[cat];
   return (
     <Box
@@ -127,7 +121,6 @@ function StatusPill({ status }: { status: FindingStatus }) {
           flexShrink: 0,
         }}
       />
-      {cfg.label}
     </Box>
   );
 }
@@ -312,14 +305,9 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
   const impression = parseImpression(reportText);
 
   const sorted = [...findings].sort((a, b) => {
-    const aAbnormal =
-      getCategory((a.status ?? "same") as FindingStatus) === "abnormal" ? 0 : 1;
-    const bAbnormal =
-      getCategory((b.status ?? "same") as FindingStatus) === "abnormal" ? 0 : 1;
-    if (aAbnormal !== bAbnormal) return aAbnormal - bAbnormal;
-    if (a.isCritical && !b.isCritical) return -1;
-    if (!a.isCritical && b.isCritical) return 1;
-    return 0;
+    const aAbnormal = getCategory(a) === "abnormal" ? 0 : 1;
+    const bAbnormal = getCategory(b) === "abnormal" ? 0 : 1;
+    return aAbnormal - bAbnormal;
   });
 
   return (
@@ -391,11 +379,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           <IconButton
             size="small"
             onClick={onToggleAllBoxes}
-            title={
-              allBoxesHidden
-                ? "Show all bounding boxes"
-                : "Hide all bounding boxes"
-            }
+            title={allBoxesHidden ? "Show all bounding boxes" : "Hide all bounding boxes"}
             sx={{
               p: "3px",
               color: allBoxesHidden ? "#2a3540" : "#607d8b",
@@ -426,8 +410,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
             ) : (
               sorted.map((item) => {
                 const isSelected = item.id === selectedFindingId;
-                const status = (item.status ?? "same") as FindingStatus;
-                const cat = getCategory(status);
+                const cat = getCategory(item);
                 const cfg = STATUS_CONFIG[cat];
 
                 return (
@@ -439,9 +422,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                       px: 1.25,
                       py: 1,
                       bgcolor: isSelected ? cfg.bg : "rgba(255,255,255,0.03)",
-                      borderColor: isSelected
-                        ? cfg.border
-                        : "rgba(255,255,255,0.08)",
+                      borderColor: isSelected ? cfg.border : "rgba(255,255,255,0.08)",
                       borderWidth: isSelected ? "1.5px" : "1px",
                       display: "flex",
                       alignItems: "center",
@@ -482,7 +463,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <StatusPill status={status} />
+                      <StatusPill finding={item} />
                       <IconButton
                         size="small"
                         onClick={() => onRemoveFinding(item.id)}
@@ -509,9 +490,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
           <Button
             variant="outlined"
             size="small"
-            onClick={
-              findingListening ? stopFindingListening : startFindingListening
-            }
+            onClick={findingListening ? stopFindingListening : startFindingListening}
             startIcon={
               findingListening ? (
                 <StopIcon sx={{ fontSize: 14 }} />
@@ -523,28 +502,18 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
             fullWidth
             sx={{
               fontSize: "0.75rem",
-              borderColor: findingListening
-                ? "rgba(239, 83, 80, 0.6)"
-                : "rgba(255,255,255,0.15)",
+              borderColor: findingListening ? "rgba(239, 83, 80, 0.6)" : "rgba(255,255,255,0.15)",
               color: findingListening ? "#ef5350" : "#78909c",
-              bgcolor: findingListening
-                ? "rgba(239, 83, 80, 0.08)"
-                : "transparent",
-              animation: findingListening
-                ? "pulse 1.4s ease-in-out infinite"
-                : "none",
+              bgcolor: findingListening ? "rgba(239, 83, 80, 0.08)" : "transparent",
+              animation: findingListening ? "pulse 1.4s ease-in-out infinite" : "none",
               "@keyframes pulse": {
                 "0%": { boxShadow: "0 0 0 0 rgba(239, 83, 80, 0.4)" },
                 "70%": { boxShadow: "0 0 0 6px rgba(239, 83, 80, 0)" },
                 "100%": { boxShadow: "0 0 0 0 rgba(239, 83, 80, 0)" },
               },
               "&:hover": {
-                borderColor: findingListening
-                  ? "rgba(239, 83, 80, 0.9)"
-                  : "rgba(255,255,255,0.3)",
-                bgcolor: findingListening
-                  ? "rgba(239, 83, 80, 0.15)"
-                  : "rgba(255,255,255,0.04)",
+                borderColor: findingListening ? "rgba(239, 83, 80, 0.9)" : "rgba(255,255,255,0.3)",
+                bgcolor: findingListening ? "rgba(239, 83, 80, 0.15)" : "rgba(255,255,255,0.04)",
               },
             }}
           >
@@ -562,14 +531,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                 borderRadius: "6px",
               }}
             >
-              <Typography
-                sx={{
-                  fontSize: "0.72rem",
-                  color: "#ef5350",
-                  fontWeight: 700,
-                  mb: 0.4,
-                }}
-              >
+              <Typography sx={{ fontSize: "0.72rem", color: "#ef5350", fontWeight: 700, mb: 0.4 }}>
                 ● RECORDING
               </Typography>
               <Typography
@@ -630,14 +592,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
                 borderRadius: "6px",
               }}
             >
-              <Typography
-                sx={{
-                  fontSize: "0.72rem",
-                  color: "#ef5350",
-                  fontWeight: 700,
-                  mb: 0.4,
-                }}
-              >
+              <Typography sx={{ fontSize: "0.72rem", color: "#ef5350", fontWeight: 700, mb: 0.4 }}>
                 ● RECORDING
               </Typography>
               <Typography
@@ -742,11 +697,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
         <Button
           variant="contained"
           size="small"
-          onClick={
-            impressionListening
-              ? stopImpressionListening
-              : startImpressionListening
-          }
+          onClick={impressionListening ? stopImpressionListening : startImpressionListening}
           disabled={findings.length === 0 || isGeneratingReport}
           startIcon={
             impressionListening ? (
@@ -759,9 +710,7 @@ const CombinedPanel: React.FC<CombinedPanelProps> = ({
             flex: 1,
             fontSize: "0.75rem",
             bgcolor: impressionListening ? "rgba(239, 83, 80, 0.85)" : "#1565c0",
-            animation: impressionListening
-              ? "pulse 1.4s ease-in-out infinite"
-              : "none",
+            animation: impressionListening ? "pulse 1.4s ease-in-out infinite" : "none",
             "@keyframes pulse": {
               "0%": { boxShadow: "0 0 0 0 rgba(239, 83, 80, 0.4)" },
               "70%": { boxShadow: "0 0 0 6px rgba(239, 83, 80, 0)" },

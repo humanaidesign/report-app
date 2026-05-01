@@ -14,18 +14,10 @@ export interface BoundingBox {
   height: number;
 }
 
-export interface StructuredFinding {
-  id: string;
-  category: string;
-  description: string;
-  status: FindingStatus;
-}
-
 export interface Finding {
   id: string;
   text: string;
   isCritical: boolean;
   boundingBox?: BoundingBox;
   status?: FindingStatus;
-  structuredFindings?: StructuredFinding[];
 }
